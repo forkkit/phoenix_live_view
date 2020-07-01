@@ -4,19 +4,17 @@ defmodule Phoenix.LiveView.Controller do
   """
 
   alias Phoenix.LiveView
+  alias Phoenix.LiveView.Socket
 
   @doc """
   Renders a live view from a Plug request and sends an HTML response.
 
+  Before rendering, the `@live_module` assign will be added to the
+  connection assigns for reference.
+
   ## Options
 
-    * `:session` - the map of session data to sign and send
-      to the client. When connecting from the client, the live view
-      will receive the signed session from the client and verify
-      the contents before proceeding with `mount/2`.
-
-  Before render the `@live_view_module` assign will be added to the
-  connection assigns for reference.
+  See `Phoenix.LiveView.Helpers.live_render/3` for all supported options.
 
   ## Examples
 
@@ -26,27 +24,39 @@ defmodule Phoenix.LiveView.Controller do
 
         def show(conn, %{"id" => thermostat_id}) do
           live_render(conn, ThermostatLive, session: %{
-            thermostat_id: id,
-            current_user_id: get_session(conn, :user_id),
+            "thermostat_id" => id,
+            "current_user_id" => get_session(conn, :user_id)
           })
         end
       end
 
   """
-  def live_render(%Plug.Conn{} = conn, view, opts) do
-    case LiveView.View.static_render(conn, view, opts) do
-      {:ok, content} ->
+  def live_render(%Plug.Conn{} = conn, view, opts \\ []) do
+    case LiveView.Static.render(conn, view, opts) do
+      {:ok, content, socket_assigns} ->
         conn
-        |> Plug.Conn.assign(:live_view_module, view)
-        |> Phoenix.Controller.put_view(LiveView.View)
+        |> Phoenix.Controller.put_view(LiveView.Static)
         |> LiveView.Plug.put_cache_headers()
-        |> Phoenix.Controller.render("template.html", %{content: content})
+        |> Phoenix.Controller.render(
+          "template.html",
+          Map.put(socket_assigns, :content, content)
+        )
 
-      {:stop, {:redirect, opts}} ->
-        Phoenix.Controller.redirect(conn, to: Map.fetch!(opts, :to))
+      {:stop, %Socket{redirected: {:redirect, %{to: to}}} = socket} ->
+        conn
+        |> put_flash(LiveView.Utils.get_flash(socket))
+        |> Phoenix.Controller.redirect(to: to)
 
-      {:stop, {:live, opts}} ->
-        Phoenix.Controller.redirect(conn, to: Map.fetch!(opts, :to))
+      {:stop, %Socket{redirected: {:live, _, %{to: to}}} = socket} ->
+        conn
+        |> put_flash(LiveView.Utils.get_flash(socket))
+        |> Plug.Conn.put_private(:phoenix_live_redirect, true)
+        |> Phoenix.Controller.redirect(to: to)
     end
   end
+
+  defp put_flash(conn, nil), do: conn
+
+  defp put_flash(conn, flash),
+    do: Enum.reduce(flash, conn, fn {k, v}, acc -> Phoenix.Controller.put_flash(acc, k, v) end)
 end

@@ -7,19 +7,16 @@ assignees: ''
 
 ---
 
-<!--
-*Note:* Currently Live View is under active development and we are focused on getting a stable and solid initial version out. For this reason, we will be accepting only bug reports in the issues tracker for now. We will open the issues tracker for features after the current milestone is ironed out.
-
-And remember – be nice and have fun!
--->
-
 ### Environment
 
 * Elixir version (elixir -v):
 * Phoenix version (mix deps):
+* Phoenix LiveView version (mix deps):
 * NodeJS version (node -v):
 * NPM version (npm -v):
 * Operating system:
+* Browsers you attempted to reproduce this bug on (the more the merrier): 
+* Does the problem persist after removing "assets/node_modules" and trying again? Yes/no:
 
 ### Actual behavior
 

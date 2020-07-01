@@ -7,6 +7,7 @@ let prepareLiveViewDOM = (document) => {
   const div = document.createElement('div')
   div.setAttribute('data-phx-view', '')
   div.setAttribute('data-phx-session', 'abc123')
+  div.setAttribute('data-phx-root-id', 'container1')
   div.setAttribute('id', 'container1')
   div.innerHTML = `
     <label for="plus">Plus</label>
@@ -69,10 +70,7 @@ describe('LiveSocket', () => {
 
   test('connect', async () => {
     let liveSocket = new LiveSocket('/live', Socket)
-
-    expect(liveSocket.getViewByEl(container(1))).toBeUndefined()
     let socket = liveSocket.connect()
-
     expect(liveSocket.getViewByEl(container(1))).toBeDefined()
   })
 
@@ -108,6 +106,7 @@ describe('LiveSocket', () => {
     const secondLiveView = document.createElement('div')
     secondLiveView.setAttribute('data-phx-view', '')
     secondLiveView.setAttribute('data-phx-session', 'def456')
+    secondLiveView.setAttribute('data-phx-root-id', 'container1')
     secondLiveView.setAttribute('id', 'container2')
     secondLiveView.innerHTML = `
       <label for="plus">Plus</label>
@@ -117,37 +116,19 @@ describe('LiveSocket', () => {
     document.body.appendChild(secondLiveView)
 
     let liveSocket = new LiveSocket('/live', Socket)
-
     liveSocket.connect()
 
-    expect(liveSocket.getViewByEl(container(1))).toBeDefined()
-    expect(liveSocket.getViewByEl(container(2))).toBeDefined()
+    let el = container(1)
+    expect(liveSocket.getViewByEl(el)).toBeDefined()
 
     liveSocket.destroyAllViews()
-    expect(liveSocket.getViewByEl(container(1))).toBeUndefined()
-    expect(liveSocket.getViewByEl(container(2))).toBeUndefined()
+    expect(liveSocket.roots).toEqual({})
+
+    // Simulate a race condition which may attempt to
+    // destroy an element that no longer exists
+    liveSocket.destroyViewByEl(el)
+    expect(liveSocket.roots).toEqual({})
   })
-
-  test('destroyViewById', async () => {
-    let liveSocket = new LiveSocket('/live', Socket)
-
-    liveSocket.connect()
-
-    expect(liveSocket.getViewByEl(container(1))).toBeDefined()
-    liveSocket.destroyViewById("container1")
-    expect(liveSocket.getViewByEl(container(1))).toBeUndefined()
-  })
-
-  test('destroyViewByEl', async () => {
-    let liveSocket = new LiveSocket('/live', Socket)
-
-    liveSocket.connect()
-
-    expect(liveSocket.getViewByEl(container(1))).toBeDefined()
-    liveSocket.destroyViewByEl(container(1))
-    expect(liveSocket.getViewByEl(container(1))).toBeUndefined()
-  })
-
 
   test('binding', async () => {
     let liveSocket = new LiveSocket('/live', Socket)
@@ -245,20 +226,5 @@ describe('LiveSocket', () => {
     expect(liveSocket.prevActive).toBeNull()
     // this fails.  Is this correct?
     // expect(liveSocket.getActiveElement()).not.toEqual(input)
-  })
-
-  test('onViewError unsets prevActive', async () => {
-    let liveSocket = new LiveSocket('/live', Socket)
-
-    liveSocket.connect()
-
-    let input = document.querySelector('input')
-    liveSocket.setActiveElement(input)
-    liveSocket.blurActiveElement()
-
-    let view = liveSocket.getViewByEl(container(1))
-    expect(view).toBeDefined()
-    liveSocket.onViewError(view)
-    expect(liveSocket.prevActive).toBeNull()
   })
 })

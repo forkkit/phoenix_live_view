@@ -2,36 +2,34 @@ defmodule Phoenix.LiveView.Plug do
   @moduledoc false
 
   alias Phoenix.LiveView.Controller
-  alias Plug.Conn
 
   @behaviour Plug
 
   @link_header "x-requested-with"
+  @response_url_header "x-response-url"
+
   def link_header, do: @link_header
 
   @impl Plug
-  def init(opts), do: opts
+  def init(view) when is_atom(view), do: view
 
   @impl Plug
-  def call(%Conn{private: %{phoenix_live_view: opts}} = conn, view) do
-    session_keys = Keyword.get(opts, :session, [])
-
-    render_opts =
-      opts
-      |> Keyword.take([:container])
-      |> Keyword.put(:session, session(conn, session_keys))
+  def call(%{private: %{phoenix_live_view: {view, opts}}} = conn, _) do
+    opts = maybe_dispatch_session(conn, opts)
 
     if live_link?(conn) do
-      html = Phoenix.LiveView.View.static_container_render(conn, view, render_opts)
+      html = Phoenix.LiveView.Static.container_render(conn, view, opts)
 
       conn
       |> put_cache_headers()
       |> Plug.Conn.put_resp_header(@link_header, "live-link")
+      |> Plug.Conn.put_resp_header(@response_url_header, Phoenix.Controller.current_url(conn))
       |> Phoenix.Controller.html(html)
     else
       conn
-      |> put_new_layout_from_router(opts)
-      |> Controller.live_render(view, render_opts)
+      |> Phoenix.Controller.put_layout(false)
+      |> put_root_layout_from_router(opts)
+      |> Controller.live_render(view, opts)
     end
   end
 
@@ -39,20 +37,26 @@ defmodule Phoenix.LiveView.Plug do
   def put_cache_headers(conn) do
     conn
     |> Plug.Conn.put_resp_header("vary", @link_header)
-    |> Plug.Conn.put_resp_header("cache-control", "max-age=0, no-cache, no-store, must-revalidate, post-check=0, pre-check=0")
+    |> Plug.Conn.put_resp_header(
+      "cache-control",
+      "max-age=0, no-cache, no-store, must-revalidate, post-check=0, pre-check=0"
+    )
   end
 
-  defp session(conn, session_keys) do
-    for key <- session_keys, into: %{} do
-      {key, Conn.get_session(conn, key)}
+  defp maybe_dispatch_session(conn, opts) do
+    case opts[:session] do
+      {mod, fun, args} when is_atom(mod) and is_atom(fun) and is_list(args) ->
+        Keyword.put(opts, :session, apply(mod, fun, [conn | args]))
+
+      _ ->
+        opts
     end
   end
 
-  defp put_new_layout_from_router(conn, opts) do
-    cond do
-      live_link?(conn) -> Phoenix.Controller.put_layout(conn, false)
-      layout = opts[:layout] -> Phoenix.Controller.put_new_layout(conn, layout)
-      true -> conn
+  defp put_root_layout_from_router(conn, opts) do
+    case Keyword.fetch(opts, :layout) do
+      {:ok, layout} -> Phoenix.Controller.put_root_layout(conn, layout)
+      :error -> conn
     end
   end
 
